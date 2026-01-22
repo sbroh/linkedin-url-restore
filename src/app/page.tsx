@@ -18,7 +18,7 @@ export default function Home() {
       // 1. Regex to find lnkd.in URLs
       // Matches https://lnkd.in/xxxxxx or http://lnkd.in/xxxxxx
       // Word characters only to avoid trailing punctuation like . at end of sentence
-      const regex = /https?:\/\/lnkd\.in\/[\w]+/g;
+      const regex = /https?:\/\/lnkd\.in\/[\w-]+/g;
       const matches = inputText.match(regex);
 
       if (!matches || matches.length === 0) {
