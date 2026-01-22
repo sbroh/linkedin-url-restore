@@ -68,6 +68,12 @@ export default function Home() {
     }
   };
 
+  const handleReset = () => {
+    setInputText("");
+    setOutputText("");
+    setStats({ found: 0, expanded: 0 });
+  };
+
   const copyToClipboard = () => {
     if (!outputText) return;
     navigator.clipboard.writeText(outputText).then(() => {
@@ -95,6 +101,14 @@ export default function Home() {
         <div className="card">
           <div className="card-header">
             <h2 className="card-title">Input Text</h2>
+            <button
+              className="btn-copy"
+              onClick={handleReset}
+              disabled={!inputText}
+              style={{ opacity: !inputText ? 0.5 : 1, cursor: !inputText ? 'default' : 'pointer' }}
+            >
+              Reset
+            </button>
           </div>
           <textarea
             placeholder="Paste your LinkedIn post here..."
