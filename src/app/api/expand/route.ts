@@ -16,52 +16,64 @@ export async function POST(request: Request) {
             uniqueUrls.map(async (url) => {
                 try {
                     const controller = new AbortController();
-                    const timeoutId = setTimeout(() => controller.abort(), 5000); // 5s timeout
+                    const timeoutId = setTimeout(() => controller.abort(), 6000); // 6s timeout
 
                     try {
                         const response = await fetch(url, {
-                            method: 'GET', // GET is more reliable than HEAD for some servers
+                            method: 'GET',
                             redirect: 'follow', // Automatically follow redirects
                             signal: controller.signal,
                             headers: {
-                                // Use a realistic browser User-Agent to avoid being blocked
-                                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                                // Enhanced headers to mimic a real browser
+                                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
+                                'Accept-Language': 'en-US,en;q=0.9',
+                                'Cache-Control': 'no-cache',
+                                'Pragma': 'no-cache',
+                                'Sec-Fetch-Dest': 'document',
+                                'Sec-Fetch-Mode': 'navigate',
+                                'Sec-Fetch-Site': 'none',
+                                'Sec-Fetch-User': '?1',
+                                'Upgrade-Insecure-Requests': '1'
                             }
                         });
 
                         clearTimeout(timeoutId);
 
-                        // If successful, response.url will be the final destination
-                        if (response.ok) {
-                            // Check if we are still on lnkd.in or linkedin.com (Interstitial page)
-                            const isLinkedIn = response.url.includes('lnkd.in') || response.url.includes('linkedin.com');
+                        const expandedUrl = response.url;
+                        const isLinkedIn = expandedUrl.includes('lnkd.in') || expandedUrl.includes('linkedin.com');
 
+                        if (response.ok) {
                             if (isLinkedIn) {
                                 const text = await response.text();
-                                // Try to find the link in the interstitial page
-                                // Pattern: <a ... href="target" ... data-tracking-control-name="external_url_click" ...>
-                                // We search for the specific data attribute line or similar structure
 
-                                // Helper regex to find href value in a tag containing external_url_click
-                                // Since attributes order is not guaranteed, we can just look for the href near the data attribute
-                                // But the debug output showed them on the same line. 
-                                // Let's try a robust regex matching the anchor tag.
-
-                                const match = text.match(/<a[^>]+href="([^"]+)"[^>]*data-tracking-control-name="external_url_click"/i)
+                                // 1. Try "external_url_click" (Interstitial)
+                                const buttonMatch = text.match(/<a[^>]+href="([^"]+)"[^>]*data-tracking-control-name="external_url_click"/i)
                                     || text.match(/data-tracking-control-name="external_url_click"[^>]*href="([^"]+)"/i);
 
-                                if (match && match[1]) {
-                                    // Decode HTML entities if needed (usually fetch handles basic decoding, but just in case)
-                                    let expanded = match[1].replace(/&amp;/g, '&');
-                                    return { original: url, expanded: expanded };
+                                if (buttonMatch && buttonMatch[1]) {
+                                    return { original: url, expanded: buttonMatch[1].replace(/&amp;/g, '&') };
+                                }
+
+                                // 2. Try Meta Refresh
+                                const metaRefreshMatch = text.match(/<meta[^>]*http-equiv=["']?refresh["']?[^>]*content=["']?[0-9]*;\s*url=([^"']+)["']?/i);
+                                if (metaRefreshMatch && metaRefreshMatch[1]) {
+                                    return { original: url, expanded: metaRefreshMatch[1].replace(/&amp;/g, '&') };
+                                }
+
+                                // 3. Try window.location logic
+                                const scriptMatch = text.match(/window\.location\.replace\s*\(\s*['"]([^'"]+)['"]\s*\)/i)
+                                    || text.match(/window\.location\.href\s*=\s*['"]([^'"]+)['"]/i);
+
+                                if (scriptMatch && scriptMatch[1]) {
+                                    return { original: url, expanded: scriptMatch[1].replace(/\\/g, '') };
                                 }
                             }
-
-                            return { original: url, expanded: response.url };
+                            // If NOT linkedIn, or parsing failed, response.url is the best we have.
+                            return { original: url, expanded: expandedUrl };
                         } else {
-                            // If the final page is 404 or error, we still might have followed redirects.
-                            // But response.url should still be the final one.
-                            return { original: url, expanded: response.url };
+                            // If the final page is 404 or error, return the URL we landed on.
+                            return { original: url, expanded: expandedUrl };
                         }
                     } catch (error: any) {
                         clearTimeout(timeoutId);
@@ -70,6 +82,7 @@ export async function POST(request: Request) {
 
                 } catch (err) {
                     console.error(`Error expanding ${url}:`, err);
+                    // Return original if failed completely
                     return { original: url, expanded: url, error: 'Failed to expand' };
                 }
             })
